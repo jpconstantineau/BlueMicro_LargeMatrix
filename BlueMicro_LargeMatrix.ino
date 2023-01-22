@@ -1,20 +1,16 @@
 
 // Uses Adafruit Feather nRF52832
 // needs the following libraries
-// - bluemicro_hid
+// - bluemicro_hid   V0.0.9 or above
+// - bluemicro_nrf52 V0.0.2 or above
+
 #include <cstdint>
 #include <vector>
-#include <bluemicro_hid.h>
-#include "hid_keycodes.h"
-
-#define COL2ROW       0
-#define ROW2COL       1 
-
+#include <bluemicro_nrf52.h>
 /**************************************************************************************************************************/
 // musialik
-
-#define MATRIX_ROWS 10
-#define MATRIX_COLS 10
+/**************************************************************************************************************************/
+/*
 
 #define MATRIX_COL_PINS { 22, 23, 9, 16, 15, 20, 11, 24, 12, 19 }
 #define MATRIX_ROW_PINS { 25, 26, 27, 28, 29, 30, 31, 2, 3, 4}
@@ -32,12 +28,11 @@ uint16_t keymap[] =    { \
         KC_A,       KC_D,   KC_B,   KC_M,   KC_RALT,    KC_NO,      KC_EQL,     KC_PSCR,    KC_P0,      KC_PENT
         };
 
-
+*/
 /**************************************************************************************************************************/
 // LUDDITE
+/**************************************************************************************************************************/
 /*
-#define MATRIX_ROWS 8
-#define MATRIX_COLS 8
 
 #define MATRIX_ROW_PINS {6, 8, 15,17, 20,13,24,9}
 #define MATRIX_COL_PINS {30, 26, 29, 2, 45, 3, 28, 43}
@@ -69,210 +64,57 @@ uint16_t keymap[] = \
 */
 /**************************************************************************************************************************/
 // CONTRA
-/*
-#define MATRIX_ROWS 4
-#define MATRIX_COLS 12
-
+/**************************************************************************************************************************/
 #define MATRIX_ROW_PINS {3, 14, 13, 11}
 #define MATRIX_COL_PINS {5, 4, 16, 15, 30, 29, 28, 27, 26, 25, 7, 18} 
 #define  DIODE_DIRECTION COL2ROW
 
- 
+// below is to test the ROW2COL instead of standard COL2ROW
+//#define MATRIX_COL_PINS {3, 14, 13, 11}
+//#define MATRIX_ROW_PINS {5, 4, 16, 15, 30, 29, 28, 27, 26, 25, 7, 18} 
+//#define  DIODE_DIRECTION ROW2COL
 
 uint16_t keymap[] =    {KC_ESC,    KC_Q,    KC_W,    KC_E,   KC_R,    KC_T,    KC_Y,    KC_U,  KC_I,    KC_O,    KC_P,     KC_BSPACE, \
               KC_TAB,    KC_A,    KC_S,    KC_D,   KC_F,    KC_G,    KC_H,    KC_J,  KC_K,    KC_L,    KC_SCLN,  KC_QUOT, \
               KC_LSFT,   KC_Z,    KC_X,    KC_C,   KC_V,    KC_B,    KC_N,    KC_M,  KC_COMMA,KC_DOT,  KC_SLASH, KC_ENTER, \
-              KC_LCTL,   KC_LGUI, KC_LALT, KC_RGUI,LAYER_1, KC_SPC,  KC_SPC, LAYER_2,KC_LEFT, KC_UP,   KC_DOWN,  KC_RIGHT};*/
+              KC_LCTL,   KC_LGUI, KC_LALT, KC_RGUI,LAYER_1, KC_SPC,  KC_SPC, LAYER_2,KC_LEFT, KC_UP,   KC_DOWN,  KC_RIGHT};
 /**************************************************************************************************************************/
 
-typedef std::vector <uint16_t> trigger_keycodes_t;
-typedef std::vector <uint8_t>  trigger_keys_t;
+#if DIODE_DIRECTION == COL2ROW
+  #define sleepnRF52(r,c)   sleepnRF52_C2R(r,c)
+  #define scanMatrix(a,b,c) scanMatrix_C2R(a,b,c)
+#else
+  #define sleepnRF52(r,c)   sleepnRF52_R2C(r,c)
+  #define scanMatrix(a,b,c) scanMatrix_R2C(a,b,c)
+#endif
 
 trigger_keys_t activeKeys;
 trigger_keycodes_t activeKeycodes;
-std::vector<uint8_t> reportvector;
+
 
 byte rows[] MATRIX_ROW_PINS;        // Contains the GPIO Pin Numbers 
 byte columns[] MATRIX_COL_PINS;     // Contains the GPIO Pin Numbers 
 /**************************************************************************************************************************/
 
 
-void sleepNow()
-{
-  for(int j = 0; j < MATRIX_ROWS; ++j) {                             
-    //set the current row as OUPUT and LOW
-    pinMode(rows[j], OUTPUT);
-    #if DIODE_DIRECTION == COL2ROW                                         
-    digitalWrite(rows[j], LOW);                                       // 'enables' a specific row to be "low" 
-    #else
-    digitalWrite(rows[j], HIGH);                                       // 'enables' a specific row to be "HIGH"
-    #endif
-  }
-  //loops thru all of the columns
-  for (int i = 0; i < MATRIX_COLS; ++i) {
-      #if DIODE_DIRECTION == COL2ROW                                         
-        pinMode(columns[i], INPUT_PULLUP_SENSE);              // 'enables' the column High Value on the diode; becomes "LOW" when pressed - Sense makes it wake up when sleeping
-      #else
-        pinMode(columns[i], INPUT_PULLDOWN_SENSE);            // 'enables' the column High Value on the diode; becomes "LOW" when pressed - Sense makes it wake up when sleeping
-      #endif
-  }
-  sd_power_system_off();
-}
-
-/**************************************************************************************************************************/
-/* These are compile time replacements for the scanMatrix function and depends on DIODE_DIRECTION and nRF52832/nRF52840   */
-/**************************************************************************************************************************/
-#if DIODE_DIRECTION == COL2ROW
-#define writeRow(r) digitalWrite(r,LOW)
-#define modeCol(c) pinMode(c, INPUT_PULLUP)
-#ifdef NRF52840_XXAA
-#define gpioIn (((uint64_t)(NRF_P1->IN)^0xffffffff)<<32)|(NRF_P0->IN)^0xffffffff
-#else
-#define gpioIn (NRF_GPIO->IN)^0xffffffff
-#endif
-#else
-#define writeRow(r) digitalWrite(r,HIGH)
-#define modeCol(c) pinMode(c, INPUT_PULLDOWN)
-#ifdef NRF52840_XXAA
-#define gpioIn (((uint64_t)NRF_P1->IN)<<32)|(NRF_P0->IN)
-#else
-#define gpioIn NRF_GPIO->IN
-#endif
-#endif
-#ifdef NRF52840_XXAA
-#define PINDATATYPE uint64_t
-#else
-#define PINDATATYPE uint32_t
-#endif
-/**************************************************************************************************************************/
-trigger_keys_t scanMatrix(trigger_keys_t activeKeys)
-{
-    bool has_key = false;
-    PINDATATYPE pinreg = 0;
-
-    //Setting up Scanning, Enabling all columns
-    for (int i = 0; i < MATRIX_COLS; ++i){
-        modeCol(columns[i]);
-    } 
-
-    // FIRST ROW
-    pinMode(rows[0], OUTPUT);
-    writeRow(rows[0]);
-    nrfx_coredep_delay_us(1);   // need for the GPIO lines to settle down electrically before reading first row;
-    // READ FIRST ROW
-    pinreg = gpioIn;   // press is active high regardless of diode dir
-    pinMode(rows[0], INPUT);                                        // 'disables' the row that was just scanned  
-
-    /*************/
-
-     for (int j = 1; j < MATRIX_ROWS; ++j){       
-      // NEXT ROW
-        pinMode(rows[j], OUTPUT);
-        writeRow(rows[j]);
-        // PROCESS PREVIOUS ROW - need for the GPIO lines to settle down electrically before reading NEXT row;
-        for (int i = 0; i < MATRIX_COLS; ++i){
-            int ulPin = g_ADigitalPinMap[columns[i]]; 
-            if((pinreg>>ulPin)&1)  
-              {
-                uint8_t keynumber = (j-1)*MATRIX_COLS + i;
-                Serial.println(keynumber);
-                activeKeys.push_back(keynumber);
-                has_key = true;
-              }
-        }
-        // READ NEXT ROW
-        pinreg = gpioIn;  // press is active high regardless of diode dir
-        pinMode(rows[j], INPUT); 
-     }
-
-    // PROCESS LAST ROW - Process 4th row right away...
-    for (int i = 0; i < MATRIX_COLS; ++i){
-        int ulPin = g_ADigitalPinMap[columns[i]]; 
-        if((pinreg>>ulPin)&1)  
-          {
-            uint8_t keynumber = (MATRIX_ROWS-1)*MATRIX_COLS + i;
-            Serial.println(keynumber);
-            activeKeys.push_back(keynumber);
-            has_key = true;
-          }
-    }
-    /*************/ 
-    //Scanning done, disabling all columns - needed to save power
-    for (int i = 0; i < MATRIX_COLS; ++i) {                             
-        pinMode(columns[i], INPUT);                                     
-    }
-    return activeKeys;
-}
-/**************************************************************************************************************************/
 trigger_keycodes_t processKeys(trigger_keys_t activeKeys, trigger_keycodes_t activeKeycodes)
 {
+  //Serial.print("P");
     for (auto pressedkey : activeKeys) 
     {
+         // Serial.print(pressedkey);
+        //  Serial.print(" ");
          uint16_t keycode = keymap[pressedkey]; 
          activeKeycodes.push_back(keycode);
     }
+  //  Serial.println("");
   return activeKeycodes;
 }
-/**************************************************************************************************************************/
-trigger_keycodes_t sendKeys(trigger_keycodes_t activeKeycodes)
-{
-  static bool has_key = false;  // must be static to remember previous state
-  if ( activeKeycodes.empty() )
-    {
-      // send empty key report if previously has key pressed
-      if (has_key) 
-      { 
-        bluemicro_hid.keyboardRelease();
-        has_key = false;
-      }
-    } 
-    else
-    {
-        has_key = true;
-        uint8_t currentMod = 0;
-        for (auto keycode : activeKeycodes) 
-        {
-            auto hidKeycode = static_cast<uint8_t>(keycode & 0x00FF);
-            auto extraModifiers = static_cast<uint8_t>((keycode & 0xFF00) >> 8);
-    
-            if (hidKeycode >= KC_A && hidKeycode <= KC_EXSEL)
-            {
-              // add hidKeycode to report vector
-              reportvector.push_back(hidKeycode);
-            }  
-            //check if the hid keycode contains a modifier. // also check for macros.
-            switch (hidKeycode) { 
-                case KC_LCTRL:  currentMod |= 1;    currentMod |= extraModifiers; break;
-                case KC_LSHIFT: currentMod |= 2;    currentMod |= extraModifiers; break;
-                case KC_LALT:   currentMod |= 4;    currentMod |= extraModifiers; break;
-                case KC_LGUI:   currentMod |= 8;    currentMod |= extraModifiers; break;
-                case KC_RCTRL:  currentMod |= 16;   currentMod |= extraModifiers; break;
-                case KC_RSHIFT: currentMod |= 32;   currentMod |= extraModifiers; break;
-                case KC_RALT:   currentMod |= 64;   currentMod |= extraModifiers; break;
-                case KC_RGUI:   currentMod |= 128;  currentMod |= extraModifiers; break;
-            }
-            //add all of the extra modifiers into the curren modifier 
-            currentMod |= extraModifiers;
-        }
 
-        uint8_t keycode[6] = { 0 };
-        uint8_t keycodeposition = 0;
-        for (auto thiskeycode : reportvector) 
-        {
-          if (keycodeposition<6)
-          {
-              keycode[keycodeposition] = thiskeycode;
-          }
-          keycodeposition++;
-        }
-        bluemicro_hid.keyboardReport(currentMod, keycode);
-        activeKeycodes.clear();
-        reportvector.clear();
-    }
-  return activeKeycodes;
-}
+
+
 /**************************************************************************************************************************/
-void pause(unsigned long timestamp, uint8_t cycletime, bool nokeys)
+void pause(unsigned long timestamp, uint16_t cycletime, bool nokeys, unsigned long sleeptime)
 {
   static unsigned long lasttime =0;
   static unsigned long lastkeytime =0;
@@ -283,9 +125,9 @@ void pause(unsigned long timestamp, uint8_t cycletime, bool nokeys)
   {
     lastkeytime = timestamp;
   }
-  if (diffkey> 60000) 
-  {
-    sleepNow();
+  if (diffkey> sleeptime) 
+  {                                        
+        sleepnRF52(rows,columns);
   }
   if ((diff) < 15*cycletime/10)
   {
@@ -301,16 +143,14 @@ void setup() {
   Serial.println("BlueMicro_HID Large Matrix Tests");
   activeKeys.reserve(10);
   activeKeycodes.reserve(10);
-  reportvector.reserve(7);
 }
 /**************************************************************************************************************************/
 void loop() {
-  // put your main code here, to run repeatedly:  
-  activeKeys = scanMatrix(activeKeys);
+  // put your main code here, to run repeatedly:                                         
+  activeKeys = scanMatrix(activeKeys,rows,columns);
   bool nokeyspresssed = activeKeys.empty();
   activeKeycodes = processKeys(activeKeys,activeKeycodes);
-  activeKeys.clear();
   activeKeycodes = sendKeys(activeKeycodes); 
   bluemicro_hid.processQueues(CONNECTION_MODE_AUTO);
-  pause(millis(),10,nokeyspresssed);
+  pause(millis(),10,nokeyspresssed,60000);
 }
