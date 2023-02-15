@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Pierre Constantineau
+                // SPDX-FileCopyrightText: 2023 Pierre Constantineau
 //
 // SPDX-License-Identifier: MIT
 
@@ -25,6 +25,7 @@
 #define MATRIX_COL_PINS { 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17 }
 #define MATRIX_ROW_PINS { 18,19,20,21,22,26}
 #define DIODE_DIRECTION COL2ROW
+#define LEDPIN 27
 uint16_t keymap[] =    { \
 KC_ESC, KC_NO,  KC_F1,  KC_F2,  KC_F3,  KC_F4,  KC_NO,  KC_F5,  KC_F6,  KC_F7,  KC_F8,  KC_F9,  KC_F10, KC_F11, KC_F12,      KC_PSCR,KC_SLCK,KC_PAUS,  
 KC_GRAVE,KC_1,  KC_2,   KC_3,   KC_4,   KC_5,   KC_6,   KC_7,   KC_8,   KC_9,   KC_0,   KC_MINS,KC_EQL, KC_BSPC, KC_BSPC, KC_INS,KC_HOME,KC_PGUP,\
@@ -40,6 +41,8 @@ KC_LCTL,KC_LGUI,KC_NO,  KC_LALT,KC_NO,  KC_NO,  KC_SPC, KC_NO,  KC_NO,  KC_NO,  
 #define MATRIX_COL_PINS { 22, 23, 9, 16, 15, 20, 11, 24, 12, 19 }
 #define MATRIX_ROW_PINS { 25, 26, 27, 28, 29, 30, 31, 2, 3, 4}
 #define DIODE_DIRECTION COL2ROW
+#define LEDPIN 17
+
 uint16_t keymap[] =    { \
         KC_ESC,     KC_Q,   KC_E,   KC_G,   KC_J,       KC_SCLN,    KC_SLSH,    KC_P1,      KC_P4,      KC_PDOT, 
         KC_GRAVE,    KC_1,   KC_3,   KC_T,   KC_U,       KC_P,       KC_LCTL,    KC_RGHT,    KC_P7,      KC_P3, 
@@ -57,11 +60,12 @@ uint16_t keymap[] =    { \
 /**************************************************************************************************************************/
 // LUDDITE
 /**************************************************************************************************************************/
-/*
+
 
 #define MATRIX_ROW_PINS {6, 8, 15,17, 20,13,24,9}
 #define MATRIX_COL_PINS {30, 26, 29, 2, 45, 3, 28, 43}
 #define DIODE_DIRECTION COL2ROW
+#define LEDPIN 38
 #define KEYMAP( \
     K00, K01, K02, K03, K04, K05, K06, K07, K10, K11, K12, K13, K14, K15, \
     K16, K17, K20, K21, K22, K23, K24, K25, K26, K27, K30, K31, K32, K33, \
@@ -86,14 +90,15 @@ uint16_t keymap[] = \
         KC_LSFT,KC_Z,   KC_X,   KC_C,   KC_V,   KC_B,   KC_N,   KC_M,   KC_COMM,KC_DOT, KC_SLSH,KC_RSFT, \
         KC_LCTL,KC_LGUI,KC_LALT,          KC_SPC,                     LAYER_1, KC_RALT, KC_APP,KC_RCTL);
 
-*/
+
 /**************************************************************************************************************************/
 // CONTRA
 /**************************************************************************************************************************/
-
+/*
 #define MATRIX_ROW_PINS {3, 14, 13, 11}
 #define MATRIX_COL_PINS {5, 4, 16, 15, 30, 29, 28, 27, 26, 25, 7, 18} 
 #define  DIODE_DIRECTION COL2ROW
+#define LEDPIN 42
 
 // below is to test the ROW2COL instead of standard COL2ROW
 //#define MATRIX_COL_PINS {3, 14, 13, 11}
@@ -104,7 +109,7 @@ uint16_t keymap[] =    {KC_ESC,    KC_Q,    KC_W,    KC_E,   KC_R,    KC_T,    K
               KC_TAB,    KC_A,    KC_S,    KC_D,   KC_F,    KC_G,    KC_H,    KC_J,  KC_K,    KC_L,    KC_SCLN,  KC_QUOT, \
               KC_LSFT,   KC_Z,    KC_X,    KC_C,   KC_V,    KC_B,    KC_N,    KC_M,  KC_COMMA,KC_DOT,  KC_SLASH, KC_ENTER, \
               KC_LCTL,   KC_LGUI, KC_LALT, KC_RGUI,LAYER_1, KC_SPC,  KC_SPC, LAYER_2,KC_LEFT, KC_UP,   KC_DOWN,  KC_RIGHT};
-              
+*/              
 /**************************************************************************************************************************/
 
 
@@ -158,10 +163,8 @@ void pause(unsigned long timestamp, uint16_t cycletime, bool nokeys, unsigned lo
   {                                        
         sleep(rows,columns);
   }
-  if ((diff) < 15*cycletime/10)
-  {
-    delay(cycletime);
-  } // else don't delay and we are already slow (probably typing)
+
+  delay(((diff) < 15*cycletime/10)?cycletime:1);
 }
 
 /**************************************************************************************************************************/
@@ -172,23 +175,23 @@ void setup() {
   Serial.println("BlueMicro_HID Large Matrix Tests");
   activeKeys.reserve(10);
   activeKeycodes.reserve(10);
-  pinMode(27, OUTPUT);
+  
+  #ifdef LEDPIN
+    pinMode(LEDPIN, OUTPUT);
+  #endif  
 }
 /**************************************************************************************************************************/
 void loop() {
   // put your main code here, to run repeatedly:                                         
   activeKeys = scanMatrix(activeKeys,rows,columns);
-  bool nokeyspresssed = activeKeys.empty();
-  if (!nokeyspresssed){
-  //Serial.println(activeKeys[0]);
-  digitalWrite(27, HIGH);
-  }
-  else
-  {
-    digitalWrite(27, LOW);
-  }
+  
+  // turn on LED when pressing keys
+  #ifdef LEDPIN
+    digitalWrite(LEDPIN, (activeKeys.empty()?LOW:HIGH));
+  #endif
+  
   activeKeycodes = processKeys(activeKeys,activeKeycodes);
   activeKeycodes = sendKeys(activeKeycodes); 
   bluemicro_hid.processQueues(CONNECTION_MODE_AUTO);
-  pause(millis(),10,nokeyspresssed,60000);
+  pause(millis(),10,activeKeys.empty(),60000);
 }
